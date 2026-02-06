@@ -5,6 +5,8 @@ A .NET 10 console application that generates comprehensive HTML-based data dicti
 ## Features
 
 - **Comprehensive Database Documentation**: Automatically extracts and documents database schema, tables, columns, relationships, indexes, and more
+- **ER Diagrams**: SVG-based entity-relationship diagrams with interactive zoom and download capabilities
+- **Programmability Documentation**: Stored procedures, functions, triggers with full definitions
 - **User & Security Documentation**: Documents database users, roles, and permissions
 - **Job Documentation**: Captures SQL Server Agent jobs and their schedules
 - **Interactive HTML Output**: Multi-page HTML with navigation and drill-down capabilities

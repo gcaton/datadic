@@ -221,8 +221,16 @@ dotnet run -- -c "Server=localhost,1433;Database=MyDB;User Id=sa;Password=Pass12
 
 ## 🔮 Future Enhancements
 
+### Completed Features ✅
+- [x] **Database diagrams** (SVG/Canvas visualization) - **COMPLETED**
+  - SVG-based ER diagrams
+  - Interactive zoom controls
+  - Downloadable SVG files
+  - Schema-based auto-layout
+  - Clickable table links
+  - Relationship visualization
+
 ### Planned Features (from PROJECT.md)
-- [ ] Database diagrams (SVG/Canvas visualization)
 - [ ] PostgreSQL provider implementation
 - [ ] MySQL provider implementation
 - [ ] Extended properties/descriptions
@@ -231,6 +239,8 @@ dotnet run -- -c "Server=localhost,1433;Database=MyDB;User Id=sa;Password=Pass12
 - [ ] Search functionality
 - [ ] Performance metrics
 - [ ] Dependency graphs
+- [ ] Canvas-based diagram alternative
+- [ ] Force-directed layout option
 
 ### Extensibility Points
 - **IDatabaseProvider** - Add new database types
