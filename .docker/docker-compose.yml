@@ -1,0 +1,38 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: datadic-sqlserver
+    hostname: sqlserver
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=DataDic123!
+      - MSSQL_PID=Developer
+      - MSSQL_AGENT_ENABLED=True
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+      - ./scripts:/docker-entrypoint-initdb.d
+      - ./scripts:/scripts
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P DataDic123! -Q "SELECT 1" -C || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  webserver:
+    image: nginx:alpine
+    container_name: datadic-webserver
+    ports:
+      - "8080:80"
+    volumes:
+      - ../output:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - sqlserver
+    restart: unless-stopped
+
+volumes:
+  sqlserver-data:
+    driver: local
