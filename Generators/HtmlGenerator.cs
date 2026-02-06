@@ -249,6 +249,7 @@ pre {
         html.AppendLine("        <div class=\"container\">");
         html.AppendLine($"            <h1>Database Data Dictionary</h1>");
         html.AppendLine($"            <p>{Encode(metadata.ServerName)} / {Encode(metadata.DatabaseName)}</p>");
+        html.AppendLine($"            <p style=\"font-size: 0.9em; opacity: 0.8;\">Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</p>");
         html.AppendLine("        </div>");
         html.AppendLine("    </header>");
 
