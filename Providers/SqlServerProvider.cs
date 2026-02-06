@@ -23,6 +23,7 @@ public class SqlServerProvider : IDatabaseProvider
         metadata.Jobs = await GetJobsAsync(connection);
         metadata.StoredProcedures = await GetStoredProceduresAsync(connection);
         metadata.Functions = await GetFunctionsAsync(connection);
+        metadata.Statistics = await GetStatisticsAsync(connection);
 
         return metadata;
     }
@@ -671,5 +672,168 @@ public class SqlServerProvider : IDatabaseProvider
     {
         // Same implementation as procedure parameters
         return await GetProcedureParametersAsync(connection, schema, funcName);
+    }
+
+    private async Task<DatabaseStatistics> GetStatisticsAsync(SqlConnection connection)
+    {
+        var stats = new DatabaseStatistics
+        {
+            CollectedAt = DateTime.UtcNow
+        };
+
+        // Get database size information
+        var sizeQuery = @"
+            -- Get data and log file sizes from database files
+            SELECT 
+                SUM(size * 8.0 / 1024) AS DatabaseSizeMB,
+                SUM(CASE WHEN type = 0 THEN size * 8.0 / 1024 ELSE 0 END) AS DataSizeMB,
+                SUM(CASE WHEN type = 1 THEN size * 8.0 / 1024 ELSE 0 END) AS LogSizeMB
+            FROM sys.database_files;
+            
+            -- Get unallocated space
+            SELECT 
+                (SUM(size) * 8.0 / 1024) - SUM(FILEPROPERTY(name, 'SpaceUsed') * 8.0 / 1024) AS UnallocatedSpaceMB
+            FROM sys.database_files
+            WHERE type = 0;";
+
+        using (var cmd = new SqlCommand(sizeQuery, connection))
+        using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            if (await reader.ReadAsync())
+            {
+                stats.DatabaseSizeMB = reader.GetDecimal(0);
+                stats.DataSizeMB = reader.GetDecimal(1);
+                stats.LogSizeMB = reader.GetDecimal(2);
+            }
+
+            if (await reader.NextResultAsync() && await reader.ReadAsync())
+            {
+                stats.UnallocatedSpaceMB = reader.GetDecimal(0);
+            }
+        }
+
+        // Get object counts
+        var countQuery = @"
+            SELECT 
+                (SELECT COUNT(*) FROM sys.tables) AS TotalTables,
+                (SELECT COUNT(*) FROM sys.views) AS TotalViews,
+                (SELECT COUNT(*) FROM sys.procedures WHERE is_ms_shipped = 0) AS TotalStoredProcedures,
+                (SELECT COUNT(*) FROM sys.objects WHERE type IN ('FN', 'IF', 'TF')) AS TotalFunctions,
+                (SELECT COUNT(*) FROM sys.triggers WHERE parent_class = 1) AS TotalTriggers,
+                (SELECT COUNT(*) FROM sys.indexes WHERE type > 0) AS TotalIndexes";
+
+        using (var cmd = new SqlCommand(countQuery, connection))
+        using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            if (await reader.ReadAsync())
+            {
+                stats.TotalTables = reader.GetInt32(0);
+                stats.TotalViews = reader.GetInt32(1);
+                stats.TotalStoredProcedures = reader.GetInt32(2);
+                stats.TotalFunctions = reader.GetInt32(3);
+                stats.TotalTriggers = reader.GetInt32(4);
+                stats.TotalIndexes = reader.GetInt32(5);
+            }
+        }
+
+        // Get largest tables
+        stats.LargestTables = await GetLargestTablesAsync(connection);
+
+        // Get top queries
+        stats.TopQueries = await GetTopQueriesAsync(connection);
+
+        return stats;
+    }
+
+    private async Task<List<TableSizeInfo>> GetLargestTablesAsync(SqlConnection connection)
+    {
+        var tables = new List<TableSizeInfo>();
+
+        var query = @"
+            SELECT TOP 10
+                s.name AS SchemaName,
+                t.name AS TableName,
+                p.rows AS [RowCount],
+                CAST(ROUND((SUM(a.total_pages) * 8) / 1024.00, 2) AS DECIMAL(18,2)) AS TotalSpaceMB,
+                CAST(ROUND((SUM(a.used_pages) * 8) / 1024.00, 2) AS DECIMAL(18,2)) AS DataSpaceMB,
+                CAST(ROUND((SUM(CASE WHEN i.index_id > 1 THEN a.used_pages ELSE 0 END) * 8) / 1024.00, 2) AS DECIMAL(18,2)) AS IndexSpaceMB,
+                CAST(ROUND((SUM(a.total_pages - a.used_pages) * 8) / 1024.00, 2) AS DECIMAL(18,2)) AS UnusedSpaceMB
+            FROM sys.tables t
+            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+            INNER JOIN sys.indexes i ON t.object_id = i.object_id
+            INNER JOIN sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.index_id
+            INNER JOIN sys.allocation_units a ON p.partition_id = a.container_id
+            WHERE t.is_ms_shipped = 0
+            GROUP BY s.name, t.name, p.rows
+            ORDER BY TotalSpaceMB DESC";
+
+        using var cmd = new SqlCommand(query, connection);
+        using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            tables.Add(new TableSizeInfo
+            {
+                Schema = reader.GetString(0),
+                TableName = reader.GetString(1),
+                RowCount = reader.IsDBNull(2) ? 0 : reader.GetInt64(2),
+                TotalSpaceMB = reader.GetDecimal(3),
+                DataSpaceMB = reader.GetDecimal(4),
+                IndexSpaceMB = reader.GetDecimal(5),
+                UnusedSpaceMB = reader.GetDecimal(6)
+            });
+        }
+
+        return tables;
+    }
+
+    private async Task<List<QueryStatInfo>> GetTopQueriesAsync(SqlConnection connection)
+    {
+        var queries = new List<QueryStatInfo>();
+
+        var query = @"
+            SELECT TOP 10
+                SUBSTRING(qt.text, (qs.statement_start_offset/2) + 1,
+                    ((CASE qs.statement_end_offset
+                        WHEN -1 THEN DATALENGTH(qt.text)
+                        ELSE qs.statement_end_offset
+                    END - qs.statement_start_offset)/2) + 1) AS QueryText,
+                qs.execution_count AS ExecutionCount,
+                CAST(qs.total_elapsed_time / 1000.0 AS DECIMAL(18,2)) AS TotalElapsedTimeMs,
+                CAST((qs.total_elapsed_time / qs.execution_count) / 1000.0 AS DECIMAL(18,2)) AS AvgElapsedTimeMs,
+                CAST(qs.total_logical_reads AS DECIMAL(18,2)) AS TotalLogicalReads,
+                CAST(qs.total_logical_reads / qs.execution_count AS DECIMAL(18,2)) AS AvgLogicalReads,
+                qs.last_execution_time AS LastExecutionTime
+            FROM sys.dm_exec_query_stats qs
+            CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) qt
+            WHERE qt.text NOT LIKE '%sys.dm_exec_query_stats%'
+                AND qt.text NOT LIKE '%sp_spaceused%'
+            ORDER BY qs.total_elapsed_time DESC";
+
+        try
+        {
+            using var cmd = new SqlCommand(query, connection);
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                queries.Add(new QueryStatInfo
+                {
+                    QueryText = reader.GetString(0).Trim(),
+                    ExecutionCount = reader.GetInt64(1),
+                    TotalElapsedTimeMs = reader.GetDecimal(2),
+                    AvgElapsedTimeMs = reader.GetDecimal(3),
+                    TotalLogicalReads = reader.GetDecimal(4),
+                    AvgLogicalReads = reader.GetDecimal(5),
+                    LastExecutionTime = reader.GetDateTime(6)
+                });
+            }
+        }
+        catch
+        {
+            // DMVs may not be accessible, return empty list
+        }
+
+        return queries;
     }
 }

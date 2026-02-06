@@ -9,6 +9,7 @@ public class DatabaseMetadata
     public List<JobInfo> Jobs { get; set; } = new();
     public List<StoredProcedureInfo> StoredProcedures { get; set; } = new();
     public List<FunctionInfo> Functions { get; set; } = new();
+    public DatabaseStatistics? Statistics { get; set; }
 }
 
 public class TableInfo
@@ -132,4 +133,43 @@ public class ParameterInfo
     public int? MaxLength { get; set; }
     public bool IsOutput { get; set; }
     public string? DefaultValue { get; set; }
+}
+
+public class DatabaseStatistics
+{
+    public decimal DatabaseSizeMB { get; set; }
+    public decimal DataSizeMB { get; set; }
+    public decimal LogSizeMB { get; set; }
+    public decimal UnallocatedSpaceMB { get; set; }
+    public long TotalTables { get; set; }
+    public long TotalViews { get; set; }
+    public long TotalStoredProcedures { get; set; }
+    public long TotalFunctions { get; set; }
+    public long TotalTriggers { get; set; }
+    public long TotalIndexes { get; set; }
+    public List<TableSizeInfo> LargestTables { get; set; } = new();
+    public List<QueryStatInfo> TopQueries { get; set; } = new();
+    public DateTime CollectedAt { get; set; }
+}
+
+public class TableSizeInfo
+{
+    public string Schema { get; set; } = string.Empty;
+    public string TableName { get; set; } = string.Empty;
+    public long RowCount { get; set; }
+    public decimal TotalSpaceMB { get; set; }
+    public decimal DataSpaceMB { get; set; }
+    public decimal IndexSpaceMB { get; set; }
+    public decimal UnusedSpaceMB { get; set; }
+}
+
+public class QueryStatInfo
+{
+    public string QueryText { get; set; } = string.Empty;
+    public long ExecutionCount { get; set; }
+    public decimal TotalElapsedTimeMs { get; set; }
+    public decimal AvgElapsedTimeMs { get; set; }
+    public decimal TotalLogicalReads { get; set; }
+    public decimal AvgLogicalReads { get; set; }
+    public DateTime LastExecutionTime { get; set; }
 }

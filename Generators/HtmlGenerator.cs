@@ -25,6 +25,7 @@ public class HtmlGenerator
 
         await GenerateCssAsync();
         await GenerateIndexAsync(metadata);
+        await GenerateStatisticsAsync(metadata);
         await GenerateDiagramAsync(metadata);
         await GenerateTablesAsync(metadata);
         await GenerateUsersAsync(metadata);
@@ -254,6 +255,7 @@ pre {
         html.AppendLine("    <div class=\"container\">");
         html.AppendLine("        <nav>");
         html.AppendLine("            <a href=\"index.html\">Home</a>");
+        html.AppendLine("            <a href=\"statistics.html\">Statistics</a>");
         html.AppendLine("            <a href=\"diagram.html\">ER Diagram</a>");
         html.AppendLine("            <a href=\"#tables\">Tables</a>");
         html.AppendLine("            <a href=\"#procedures\">Procedures</a>");
@@ -1147,6 +1149,182 @@ pre {
 
         var fileName = $"{func.Schema}_{func.Name}.html";
         await File.WriteAllTextAsync(Path.Combine(_outputPath, "functions", fileName), html.ToString());
+    }
+
+    private async Task GenerateStatisticsAsync(DatabaseMetadata metadata)
+    {
+        if (metadata.Statistics == null) return;
+
+        var stats = metadata.Statistics;
+        var html = new StringBuilder();
+
+        html.AppendLine("<!DOCTYPE html>");
+        html.AppendLine("<html>");
+        html.AppendLine("<head>");
+        html.AppendLine("    <meta charset=\"UTF-8\">");
+        html.AppendLine("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
+        html.AppendLine("    <title>Database Statistics - Data Dictionary</title>");
+        html.AppendLine("    <link rel=\"stylesheet\" href=\"css/style.css\">");
+        html.AppendLine("</head>");
+        html.AppendLine("<body>");
+
+        html.AppendLine("    <header>");
+        html.AppendLine("        <div class=\"container\">");
+        html.AppendLine($"            <h1>Database Statistics</h1>");
+        html.AppendLine($"            <p>{Encode(metadata.ServerName)} / {Encode(metadata.DatabaseName)}</p>");
+        html.AppendLine("        </div>");
+        html.AppendLine("    </header>");
+
+        html.AppendLine("    <div class=\"container\">");
+        html.AppendLine("        <nav>");
+        html.AppendLine("            <a href=\"index.html\">Home</a>");
+        html.AppendLine("            <a href=\"statistics.html\" class=\"active\">Statistics</a>");
+        html.AppendLine("            <a href=\"diagram.html\">ER Diagram</a>");
+        html.AppendLine("            <a href=\"#tables\">Tables</a>");
+        html.AppendLine("            <a href=\"#procedures\">Procedures</a>");
+        html.AppendLine("            <a href=\"#functions\">Functions</a>");
+        html.AppendLine("            <a href=\"#users\">Users</a>");
+        html.AppendLine("            <a href=\"#jobs\">Jobs</a>");
+        html.AppendLine("        </nav>");
+
+        // Database Size Overview
+        html.AppendLine("        <section>");
+        html.AppendLine("            <h2>📊 Database Size Overview</h2>");
+        html.AppendLine("            <div class=\"stats-grid\">");
+        html.AppendLine("                <div class=\"stat-card\">");
+        html.AppendLine($"                    <div class=\"number\">{stats.DatabaseSizeMB:N2} MB</div>");
+        html.AppendLine("                    <div class=\"label\">Total Database Size</div>");
+        html.AppendLine("                </div>");
+        html.AppendLine("                <div class=\"stat-card\">");
+        html.AppendLine($"                    <div class=\"number\">{stats.DataSizeMB:N2} MB</div>");
+        html.AppendLine("                    <div class=\"label\">Data Size</div>");
+        html.AppendLine("                </div>");
+        html.AppendLine("                <div class=\"stat-card\">");
+        html.AppendLine($"                    <div class=\"number\">{stats.LogSizeMB:N2} MB</div>");
+        html.AppendLine("                    <div class=\"label\">Log Size</div>");
+        html.AppendLine("                </div>");
+        html.AppendLine("                <div class=\"stat-card\">");
+        html.AppendLine($"                    <div class=\"number\">{stats.UnallocatedSpaceMB:N2} MB</div>");
+        html.AppendLine("                    <div class=\"label\">Unallocated Space</div>");
+        html.AppendLine("                </div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("        </section>");
+
+        // Object Counts
+        html.AppendLine("        <section>");
+        html.AppendLine("            <h2>🔢 Database Objects</h2>");
+        html.AppendLine("            <div class=\"stats-grid\">");
+        html.AppendLine("                <div class=\"stat-card\">");
+        html.AppendLine($"                    <div class=\"number\">{stats.TotalTables}</div>");
+        html.AppendLine("                    <div class=\"label\">Tables</div>");
+        html.AppendLine("                </div>");
+        html.AppendLine("                <div class=\"stat-card\">");
+        html.AppendLine($"                    <div class=\"number\">{stats.TotalViews}</div>");
+        html.AppendLine("                    <div class=\"label\">Views</div>");
+        html.AppendLine("                </div>");
+        html.AppendLine("                <div class=\"stat-card\">");
+        html.AppendLine($"                    <div class=\"number\">{stats.TotalStoredProcedures}</div>");
+        html.AppendLine("                    <div class=\"label\">Stored Procedures</div>");
+        html.AppendLine("                </div>");
+        html.AppendLine("                <div class=\"stat-card\">");
+        html.AppendLine($"                    <div class=\"number\">{stats.TotalFunctions}</div>");
+        html.AppendLine("                    <div class=\"label\">Functions</div>");
+        html.AppendLine("                </div>");
+        html.AppendLine("                <div class=\"stat-card\">");
+        html.AppendLine($"                    <div class=\"number\">{stats.TotalTriggers}</div>");
+        html.AppendLine("                    <div class=\"label\">Triggers</div>");
+        html.AppendLine("                </div>");
+        html.AppendLine("                <div class=\"stat-card\">");
+        html.AppendLine($"                    <div class=\"number\">{stats.TotalIndexes}</div>");
+        html.AppendLine("                    <div class=\"label\">Indexes</div>");
+        html.AppendLine("                </div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("        </section>");
+
+        // Largest Tables
+        if (stats.LargestTables.Any())
+        {
+            html.AppendLine("        <section>");
+            html.AppendLine("            <h2>💾 Top 10 Largest Tables</h2>");
+            html.AppendLine("            <table>");
+            html.AppendLine("                <thead>");
+            html.AppendLine("                    <tr>");
+            html.AppendLine("                        <th>Schema</th>");
+            html.AppendLine("                        <th>Table Name</th>");
+            html.AppendLine("                        <th>Row Count</th>");
+            html.AppendLine("                        <th>Total Space (MB)</th>");
+            html.AppendLine("                        <th>Data Space (MB)</th>");
+            html.AppendLine("                        <th>Index Space (MB)</th>");
+            html.AppendLine("                        <th>Unused Space (MB)</th>");
+            html.AppendLine("                    </tr>");
+            html.AppendLine("                </thead>");
+            html.AppendLine("                <tbody>");
+
+            foreach (var table in stats.LargestTables)
+            {
+                html.AppendLine("                    <tr>");
+                html.AppendLine($"                        <td>{Encode(table.Schema)}</td>");
+                html.AppendLine($"                        <td><a href=\"tables/{Encode(table.Schema)}_{Encode(table.TableName)}.html\">{Encode(table.TableName)}</a></td>");
+                html.AppendLine($"                        <td>{table.RowCount:N0}</td>");
+                html.AppendLine($"                        <td>{table.TotalSpaceMB:N2}</td>");
+                html.AppendLine($"                        <td>{table.DataSpaceMB:N2}</td>");
+                html.AppendLine($"                        <td>{table.IndexSpaceMB:N2}</td>");
+                html.AppendLine($"                        <td>{table.UnusedSpaceMB:N2}</td>");
+                html.AppendLine("                    </tr>");
+            }
+
+            html.AppendLine("                </tbody>");
+            html.AppendLine("            </table>");
+            html.AppendLine("        </section>");
+        }
+
+        // Top Queries
+        if (stats.TopQueries.Any())
+        {
+            html.AppendLine("        <section>");
+            html.AppendLine("            <h2>⚡ Top 10 Queries by Total Elapsed Time</h2>");
+            html.AppendLine("            <table>");
+            html.AppendLine("                <thead>");
+            html.AppendLine("                    <tr>");
+            html.AppendLine("                        <th>Query Text</th>");
+            html.AppendLine("                        <th>Execution Count</th>");
+            html.AppendLine("                        <th>Total Time (ms)</th>");
+            html.AppendLine("                        <th>Avg Time (ms)</th>");
+            html.AppendLine("                        <th>Total Reads</th>");
+            html.AppendLine("                        <th>Avg Reads</th>");
+            html.AppendLine("                        <th>Last Execution</th>");
+            html.AppendLine("                    </tr>");
+            html.AppendLine("                </thead>");
+            html.AppendLine("                <tbody>");
+
+            foreach (var query in stats.TopQueries)
+            {
+                var truncatedQuery = query.QueryText.Length > 100 
+                    ? query.QueryText.Substring(0, 100) + "..." 
+                    : query.QueryText;
+
+                html.AppendLine("                    <tr>");
+                html.AppendLine($"                        <td><code title=\"{Encode(query.QueryText)}\">{Encode(truncatedQuery)}</code></td>");
+                html.AppendLine($"                        <td>{query.ExecutionCount:N0}</td>");
+                html.AppendLine($"                        <td>{query.TotalElapsedTimeMs:N2}</td>");
+                html.AppendLine($"                        <td>{query.AvgElapsedTimeMs:N2}</td>");
+                html.AppendLine($"                        <td>{query.TotalLogicalReads:N0}</td>");
+                html.AppendLine($"                        <td>{query.AvgLogicalReads:N2}</td>");
+                html.AppendLine($"                        <td>{query.LastExecutionTime:yyyy-MM-dd HH:mm:ss}</td>");
+                html.AppendLine("                    </tr>");
+            }
+
+            html.AppendLine("                </tbody>");
+            html.AppendLine("            </table>");
+            html.AppendLine("        </section>");
+        }
+
+        html.AppendLine($"        <footer><p>Generated on {stats.CollectedAt:yyyy-MM-dd HH:mm:ss} UTC</p></footer>");
+        html.AppendLine("    </div>");
+        html.AppendLine("</body>");
+        html.AppendLine("</html>");
+
+        await File.WriteAllTextAsync(Path.Combine(_outputPath, "statistics.html"), html.ToString());
     }
 
     private string Encode(string text)
