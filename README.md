@@ -5,6 +5,7 @@ A .NET 10 console application that generates comprehensive HTML-based data dicti
 ## Features
 
 - **Comprehensive Database Documentation**: Automatically extracts and documents database schema, tables, columns, relationships, indexes, and more
+- **Database Statistics**: Real-time statistics including database size, object counts, largest tables, and top queries
 - **ER Diagrams**: SVG-based entity-relationship diagrams with interactive zoom and download capabilities
 - **Programmability Documentation**: Stored procedures, functions, triggers with full definitions
 - **User & Security Documentation**: Documents database users, roles, and permissions

@@ -230,6 +230,13 @@ dotnet run -- -c "Server=localhost,1433;Database=MyDB;User Id=sa;Password=Pass12
   - Clickable table links
   - Relationship visualization
 
+- [x] **Database Statistics** - **COMPLETED**
+  - Database size metrics (total, data, log, unallocated)
+  - Object counts (tables, views, procedures, functions, triggers, indexes)
+  - Top 10 largest tables by space usage
+  - Top 10 queries by total elapsed time
+  - Query performance metrics (execution count, avg time, logical reads)
+
 ### Planned Features (from PROJECT.md)
 - [ ] PostgreSQL provider implementation
 - [ ] MySQL provider implementation
@@ -237,10 +244,12 @@ dotnet run -- -c "Server=localhost,1433;Database=MyDB;User Id=sa;Password=Pass12
 - [ ] Change tracking history
 - [ ] Export to PDF/Word
 - [ ] Search functionality
-- [ ] Performance metrics
 - [ ] Dependency graphs
 - [ ] Canvas-based diagram alternative
 - [ ] Force-directed layout option
+- [ ] Historical statistics tracking
+- [ ] Index usage statistics
+- [ ] Missing index recommendations
 
 ### Extensibility Points
 - **IDatabaseProvider** - Add new database types
