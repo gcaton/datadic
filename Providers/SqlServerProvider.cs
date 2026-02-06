@@ -36,16 +36,24 @@ public class SqlServerProvider : IDatabaseProvider
             SELECT 
                 s.name AS SchemaName,
                 t.name AS TableName,
-                t.type_desc AS TableType
+                t.type_desc AS TableType,
+                t.create_date AS CreatedDate,
+                t.modify_date AS ModifiedDate,
+                ISNULL(ep.value, '') AS Description
             FROM sys.tables t
             INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+            LEFT JOIN sys.extended_properties ep ON ep.major_id = t.object_id AND ep.minor_id = 0 AND ep.name = 'MS_Description'
             UNION ALL
             SELECT 
                 s.name AS SchemaName,
                 v.name AS TableName,
-                'VIEW' AS TableType
+                'VIEW' AS TableType,
+                v.create_date AS CreatedDate,
+                v.modify_date AS ModifiedDate,
+                ISNULL(ep.value, '') AS Description
             FROM sys.views v
             INNER JOIN sys.schemas s ON v.schema_id = s.schema_id
+            LEFT JOIN sys.extended_properties ep ON ep.major_id = v.object_id AND ep.minor_id = 0 AND ep.name = 'MS_Description'
             ORDER BY SchemaName, TableName";
 
         using (var cmd = new SqlCommand(query, connection))
@@ -57,7 +65,10 @@ public class SqlServerProvider : IDatabaseProvider
                 {
                     Schema = reader.GetString(0),
                     Name = reader.GetString(1),
-                    Type = reader.GetString(2)
+                    Type = reader.GetString(2),
+                    CreatedDate = reader.GetDateTime(3),
+                    ModifiedDate = reader.GetDateTime(4),
+                    Description = reader.IsDBNull(5) ? null : reader.GetString(5)
                 };
                 tables.Add(table);
             }
@@ -69,6 +80,8 @@ public class SqlServerProvider : IDatabaseProvider
             table.ForeignKeys = await GetForeignKeysAsync(connection, table.Schema, table.Name);
             table.Indexes = await GetIndexesAsync(connection, table.Schema, table.Name);
             table.Triggers = await GetTriggersAsync(connection, table.Schema, table.Name);
+            table.CheckConstraints = await GetCheckConstraintsAsync(connection, table.Schema, table.Name);
+            table.Dependencies = await GetDependenciesAsync(connection, table.Schema, table.Name);
             table.RowCount = await GetRowCountAsync(connection, table.Schema, table.Name);
             
             // Get view definition if it's a view
@@ -94,13 +107,17 @@ public class SqlServerProvider : IDatabaseProvider
                 c.scale AS Scale,
                 c.is_nullable AS IsNullable,
                 c.is_identity AS IsIdentity,
+                c.is_computed AS IsComputed,
+                ISNULL(cc.definition, '') AS ComputedDefinition,
                 ISNULL(dc.definition, '') AS DefaultValue,
                 ISNULL(ep.value, '') AS Description,
-                ISNULL(pk.is_primary_key, 0) AS IsPrimaryKey
+                ISNULL(pk.is_primary_key, 0) AS IsPrimaryKey,
+                c.collation_name AS Collation
             FROM sys.columns c
             INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
             INNER JOIN sys.tables tb ON c.object_id = tb.object_id
             INNER JOIN sys.schemas s ON tb.schema_id = s.schema_id
+            LEFT JOIN sys.computed_columns cc ON c.object_id = cc.object_id AND c.column_id = cc.column_id
             LEFT JOIN sys.default_constraints dc ON c.default_object_id = dc.object_id
             LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = 'MS_Description'
             LEFT JOIN (
@@ -129,9 +146,12 @@ public class SqlServerProvider : IDatabaseProvider
                 Scale = reader.IsDBNull(4) ? null : reader.GetByte(4),
                 IsNullable = reader.GetBoolean(5),
                 IsIdentity = reader.GetBoolean(6),
-                DefaultValue = reader.IsDBNull(7) ? null : reader.GetString(7),
-                Description = reader.IsDBNull(8) ? null : reader.GetString(8),
-                IsPrimaryKey = reader.GetInt32(9) == 1
+                IsComputed = reader.GetBoolean(7),
+                ComputedDefinition = reader.IsDBNull(8) ? null : reader.GetString(8),
+                DefaultValue = reader.IsDBNull(9) ? null : reader.GetString(9),
+                Description = reader.IsDBNull(10) ? null : reader.GetString(10),
+                IsPrimaryKey = reader.GetInt32(11) == 1,
+                Collation = reader.IsDBNull(12) ? null : reader.GetString(12)
             });
         }
 
@@ -148,7 +168,10 @@ public class SqlServerProvider : IDatabaseProvider
                 SCHEMA_NAME(rt.schema_id) AS ReferencedSchema,
                 rt.name AS ReferencedTable,
                 c.name AS ColumnName,
-                rc.name AS ReferencedColumnName
+                rc.name AS ReferencedColumnName,
+                fk.delete_referential_action_desc AS OnDeleteAction,
+                fk.update_referential_action_desc AS OnUpdateAction,
+                fk.is_disabled AS IsDisabled
             FROM sys.foreign_keys fk
             INNER JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
             INNER JOIN sys.tables t ON fk.parent_object_id = t.object_id
@@ -177,7 +200,10 @@ public class SqlServerProvider : IDatabaseProvider
                 {
                     Name = fkName,
                     ReferencedSchema = reader.GetString(1),
-                    ReferencedTable = reader.GetString(2)
+                    ReferencedTable = reader.GetString(2),
+                    OnDeleteAction = reader.GetString(5),
+                    OnUpdateAction = reader.GetString(6),
+                    IsDisabled = reader.GetBoolean(7)
                 };
             }
 
@@ -196,14 +222,19 @@ public class SqlServerProvider : IDatabaseProvider
                 i.name AS IndexName,
                 i.is_unique AS IsUnique,
                 i.is_primary_key AS IsPrimaryKey,
-                c.name AS ColumnName
+                i.type_desc AS IndexType,
+                ic.is_descending_key AS IsDescending,
+                c.name AS ColumnName,
+                ic.is_included_column AS IsIncluded,
+                i.has_filter AS HasFilter,
+                i.filter_definition AS FilterDefinition
             FROM sys.indexes i
             INNER JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
             INNER JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
             INNER JOIN sys.tables t ON i.object_id = t.object_id
             INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
             WHERE s.name = @Schema AND t.name = @TableName AND i.name IS NOT NULL
-            ORDER BY i.name, ic.key_ordinal";
+            ORDER BY i.name, ic.key_ordinal, ic.index_column_id";
 
         using var cmd = new SqlCommand(query, connection);
         cmd.Parameters.AddWithValue("@Schema", schema);
@@ -223,11 +254,28 @@ public class SqlServerProvider : IDatabaseProvider
                 {
                     Name = indexName,
                     IsUnique = reader.GetBoolean(1),
-                    IsPrimaryKey = reader.GetBoolean(2)
+                    IsPrimaryKey = reader.GetBoolean(2),
+                    Type = reader.GetString(3),
+                    IsClustered = reader.GetString(3).Contains("CLUSTERED") && !reader.GetString(3).Contains("NONCLUSTERED"),
+                    FilterDefinition = reader.GetBoolean(7) && !reader.IsDBNull(8) ? reader.GetString(8) : null
                 };
             }
 
-            indexDict[indexName].Columns.Add(reader.GetString(3));
+            var columnName = reader.GetString(5);
+            var isIncluded = reader.GetBoolean(6);
+            
+            if (isIncluded)
+            {
+                indexDict[indexName].IncludedColumns.Add(columnName);
+            }
+            else
+            {
+                indexDict[indexName].Columns.Add(new IndexColumnInfo
+                {
+                    Name = columnName,
+                    IsDescending = reader.GetBoolean(4)
+                });
+            }
         }
 
         return indexDict.Values.ToList();
@@ -545,6 +593,95 @@ public class SqlServerProvider : IDatabaseProvider
 
         var result = await cmd.ExecuteScalarAsync();
         return result?.ToString();
+    }
+
+    private async Task<List<CheckConstraintInfo>> GetCheckConstraintsAsync(SqlConnection connection, string schema, string tableName)
+    {
+        var constraints = new List<CheckConstraintInfo>();
+
+        var query = @"
+            SELECT 
+                cc.name AS ConstraintName,
+                cc.definition AS Definition,
+                cc.is_disabled AS IsDisabled
+            FROM sys.check_constraints cc
+            INNER JOIN sys.tables t ON cc.parent_object_id = t.object_id
+            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+            WHERE s.name = @Schema AND t.name = @TableName";
+
+        using (var cmd = new SqlCommand(query, connection))
+        {
+            cmd.Parameters.AddWithValue("@Schema", schema);
+            cmd.Parameters.AddWithValue("@TableName", tableName);
+
+            using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    constraints.Add(new CheckConstraintInfo
+                    {
+                        Name = reader.GetString(0),
+                        Definition = reader.GetString(1),
+                        IsDisabled = reader.GetBoolean(2)
+                    });
+                }
+            }
+        }
+
+        return constraints;
+    }
+
+    private async Task<List<DependencyInfo>> GetDependenciesAsync(SqlConnection connection, string schema, string tableName)
+    {
+        var dependencies = new List<DependencyInfo>();
+
+        // Get objects this table/view depends on (USES)
+        var query = @"
+            SELECT DISTINCT
+                OBJECT_SCHEMA_NAME(sed.referenced_id) AS ReferencedSchema,
+                OBJECT_NAME(sed.referenced_id) AS ReferencedObject,
+                o.type_desc AS ReferencedType,
+                'USES' AS DependencyType
+            FROM sys.sql_expression_dependencies sed
+            INNER JOIN sys.objects o ON sed.referenced_id = o.object_id
+            WHERE sed.referencing_id = OBJECT_ID(@Schema + '.' + @TableName)
+            
+            UNION ALL
+            
+            -- Get objects that depend on this table/view (USED_BY)
+            SELECT DISTINCT
+                OBJECT_SCHEMA_NAME(sed.referencing_id) AS ReferencedSchema,
+                OBJECT_NAME(sed.referencing_id) AS ReferencedObject,
+                o.type_desc AS ReferencedType,
+                'USED_BY' AS DependencyType
+            FROM sys.sql_expression_dependencies sed
+            INNER JOIN sys.objects o ON sed.referencing_id = o.object_id
+            WHERE sed.referenced_id = OBJECT_ID(@Schema + '.' + @TableName)";
+
+        using (var cmd = new SqlCommand(query, connection))
+        {
+            cmd.Parameters.AddWithValue("@Schema", schema);
+            cmd.Parameters.AddWithValue("@TableName", tableName);
+
+            using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    if (!reader.IsDBNull(0) && !reader.IsDBNull(1))
+                    {
+                        dependencies.Add(new DependencyInfo
+                        {
+                            ReferencedSchema = reader.GetString(0),
+                            ReferencedObject = reader.GetString(1),
+                            ReferencedType = reader.GetString(2),
+                            DependencyType = reader.GetString(3)
+                        });
+                    }
+                }
+            }
+        }
+
+        return dependencies;
     }
 
     private async Task<List<StoredProcedureInfo>> GetStoredProceduresAsync(SqlConnection connection)

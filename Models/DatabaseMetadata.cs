@@ -21,8 +21,13 @@ public class TableInfo
     public List<ForeignKeyInfo> ForeignKeys { get; set; } = new();
     public List<IndexInfo> Indexes { get; set; } = new();
     public List<TriggerInfo> Triggers { get; set; } = new();
+    public List<CheckConstraintInfo> CheckConstraints { get; set; } = new();
     public long RowCount { get; set; }
     public string? Definition { get; set; } // For views
+    public DateTime CreatedDate { get; set; }
+    public DateTime ModifiedDate { get; set; }
+    public string? Description { get; set; }
+    public List<DependencyInfo> Dependencies { get; set; } = new();
 }
 
 public class ColumnInfo
@@ -35,8 +40,11 @@ public class ColumnInfo
     public bool IsNullable { get; set; }
     public bool IsPrimaryKey { get; set; }
     public bool IsIdentity { get; set; }
+    public bool IsComputed { get; set; }
+    public string? ComputedDefinition { get; set; }
     public string? DefaultValue { get; set; }
     public string? Description { get; set; }
+    public string? Collation { get; set; }
 }
 
 public class ForeignKeyInfo
@@ -45,6 +53,9 @@ public class ForeignKeyInfo
     public string ReferencedSchema { get; set; } = string.Empty;
     public string ReferencedTable { get; set; } = string.Empty;
     public List<(string Column, string ReferencedColumn)> ColumnMappings { get; set; } = new();
+    public string OnDeleteAction { get; set; } = string.Empty; // NO_ACTION, CASCADE, SET_NULL, SET_DEFAULT
+    public string OnUpdateAction { get; set; } = string.Empty;
+    public bool IsDisabled { get; set; }
 }
 
 public class IndexInfo
@@ -52,7 +63,17 @@ public class IndexInfo
     public string Name { get; set; } = string.Empty;
     public bool IsUnique { get; set; }
     public bool IsPrimaryKey { get; set; }
-    public List<string> Columns { get; set; } = new();
+    public bool IsClustered { get; set; }
+    public string Type { get; set; } = string.Empty; // CLUSTERED, NONCLUSTERED, XML, SPATIAL, etc.
+    public List<IndexColumnInfo> Columns { get; set; } = new();
+    public List<string> IncludedColumns { get; set; } = new();
+    public string? FilterDefinition { get; set; }
+}
+
+public class IndexColumnInfo
+{
+    public string Name { get; set; } = string.Empty;
+    public bool IsDescending { get; set; }
 }
 
 public class UserInfo
@@ -172,4 +193,19 @@ public class QueryStatInfo
     public decimal TotalLogicalReads { get; set; }
     public decimal AvgLogicalReads { get; set; }
     public DateTime LastExecutionTime { get; set; }
+}
+
+public class CheckConstraintInfo
+{
+    public string Name { get; set; } = string.Empty;
+    public string Definition { get; set; } = string.Empty;
+    public bool IsDisabled { get; set; }
+}
+
+public class DependencyInfo
+{
+    public string ReferencedSchema { get; set; } = string.Empty;
+    public string ReferencedObject { get; set; } = string.Empty;
+    public string ReferencedType { get; set; } = string.Empty; // TABLE, VIEW, PROCEDURE, FUNCTION
+    public string DependencyType { get; set; } = string.Empty; // USES, USED_BY
 }

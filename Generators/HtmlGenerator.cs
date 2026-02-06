@@ -610,7 +610,11 @@ pre {
         html.AppendLine("    <header>");
         html.AppendLine("        <div class=\"container\">");
         html.AppendLine($"            <h1>{Encode(table.Schema)}.{Encode(table.Name)}</h1>");
-        html.AppendLine($"            <p>{Encode(table.Type)} - {table.RowCount:N0} rows</p>");
+        html.AppendLine($"            <p>{Encode(table.Type)} - {table.RowCount:N0} rows");
+        if (table.Description != null)
+            html.AppendLine($" - {Encode(table.Description)}");
+        html.AppendLine("</p>");
+        html.AppendLine($"            <p style=\"font-size: 12px; opacity: 0.8;\">Created: {table.CreatedDate:yyyy-MM-dd} | Modified: {table.ModifiedDate:yyyy-MM-dd}</p>");
         html.AppendLine("        </div>");
         html.AppendLine("    </header>");
 
@@ -620,6 +624,12 @@ pre {
         html.AppendLine("            <a href=\"#columns\">Columns</a>");
         html.AppendLine("            <a href=\"#indexes\">Indexes</a>");
         html.AppendLine("            <a href=\"#relationships\">Relationships</a>");
+        if (table.CheckConstraints.Any())
+            html.AppendLine("            <a href=\"#constraints\">Check Constraints</a>");
+        if (table.Dependencies.Any())
+            html.AppendLine("            <a href=\"#dependencies\">Dependencies</a>");
+        if (table.Triggers.Any())
+            html.AppendLine("            <a href=\"#triggers\">Triggers</a>");
         html.AppendLine("        </nav>");
 
         html.AppendLine("        <div class=\"card\" id=\"columns\">");
@@ -647,7 +657,10 @@ pre {
 
             html.AppendLine("                    <tr>");
             html.AppendLine($"                        <td><strong>{Encode(column.Name)}</strong></td>");
-            html.AppendLine($"                        <td><code>{Encode(dataType)}</code></td>");
+            html.AppendLine($"                        <td><code>{Encode(dataType)}</code>");
+            if (column.Collation != null && column.Collation != "SQL_Latin1_General_CP1_CI_AS")
+                html.AppendLine($"<br/><small style=\"color: #666;\">Collation: {Encode(column.Collation)}</small>");
+            html.AppendLine("</td>");
             html.AppendLine($"                        <td>{(column.IsNullable ? "NULL" : "NOT NULL")}</td>");
             html.AppendLine($"                        <td>{Encode(column.DefaultValue ?? "")}</td>");
             html.AppendLine("                        <td>");
@@ -655,6 +668,12 @@ pre {
                 html.AppendLine("                            <span class=\"badge badge-primary\">PK</span>");
             if (column.IsIdentity)
                 html.AppendLine("                            <span class=\"badge badge-success\">Identity</span>");
+            if (column.IsComputed)
+            {
+                html.AppendLine("                            <span class=\"badge badge-info\">Computed</span>");
+                if (column.ComputedDefinition != null)
+                    html.AppendLine($"<br/><small style=\"color: #666;\">{Encode(column.ComputedDefinition)}</small>");
+            }
             html.AppendLine("                        </td>");
             html.AppendLine($"                        <td>{Encode(column.Description ?? "")}</td>");
             html.AppendLine("                    </tr>");
@@ -674,6 +693,7 @@ pre {
             html.AppendLine("                        <th>Index Name</th>");
             html.AppendLine("                        <th>Type</th>");
             html.AppendLine("                        <th>Columns</th>");
+            html.AppendLine("                        <th>Details</th>");
             html.AppendLine("                    </tr>");
             html.AppendLine("                </thead>");
             html.AppendLine("                <tbody>");
@@ -689,8 +709,19 @@ pre {
                     html.AppendLine("                            <span class=\"badge badge-success\">Unique</span>");
                 else
                     html.AppendLine("                            <span class=\"badge badge-info\">Index</span>");
+                if (index.IsClustered)
+                    html.AppendLine("                            <span class=\"badge badge-secondary\">Clustered</span>");
                 html.AppendLine("                        </td>");
-                html.AppendLine($"                        <td>{string.Join(", ", index.Columns)}</td>");
+                
+                var columns = string.Join(", ", index.Columns.Select(c => c.Name + (c.IsDescending ? " DESC" : "")));
+                html.AppendLine($"                        <td>{columns}</td>");
+                
+                html.AppendLine("                        <td>");
+                if (index.IncludedColumns.Any())
+                    html.AppendLine($"<strong>Included:</strong> {string.Join(", ", index.IncludedColumns)}<br/>");
+                if (index.FilterDefinition != null)
+                    html.AppendLine($"<strong>Filter:</strong> {Encode(index.FilterDefinition)}");
+                html.AppendLine("                        </td>");
                 html.AppendLine("                    </tr>");
             }
 
@@ -709,6 +740,7 @@ pre {
             html.AppendLine("                        <th>Constraint Name</th>");
             html.AppendLine("                        <th>Referenced Table</th>");
             html.AppendLine("                        <th>Column Mapping</th>");
+            html.AppendLine("                        <th>Actions</th>");
             html.AppendLine("                    </tr>");
             html.AppendLine("                </thead>");
             html.AppendLine("                <tbody>");
@@ -716,17 +748,118 @@ pre {
             foreach (var fk in table.ForeignKeys)
             {
                 var refTableFile = $"{fk.ReferencedSchema}_{fk.ReferencedTable}.html";
-                var mappings = string.Join(", ", fk.ColumnMappings.Select(m => $"{m.Column} -> {m.ReferencedColumn}"));
+                var mappings = string.Join(", ", fk.ColumnMappings.Select(m => $"{m.Column} → {m.ReferencedColumn}"));
                 
                 html.AppendLine("                    <tr>");
-                html.AppendLine($"                        <td>{Encode(fk.Name)}</td>");
+                html.AppendLine($"                        <td>{Encode(fk.Name)}");
+                if (fk.IsDisabled)
+                    html.AppendLine("<br/><span class=\"badge badge-danger\">Disabled</span>");
+                html.AppendLine("</td>");
                 html.AppendLine($"                        <td><a class=\"table-link\" href=\"{refTableFile}\">{Encode(fk.ReferencedSchema)}.{Encode(fk.ReferencedTable)}</a></td>");
                 html.AppendLine($"                        <td>{Encode(mappings)}</td>");
+                html.AppendLine("                        <td>");
+                html.AppendLine($"<strong>On Delete:</strong> {Encode(fk.OnDeleteAction)}<br/>");
+                html.AppendLine($"<strong>On Update:</strong> {Encode(fk.OnUpdateAction)}");
+                html.AppendLine("                        </td>");
                 html.AppendLine("                    </tr>");
             }
 
             html.AppendLine("                </tbody>");
             html.AppendLine("            </table>");
+            html.AppendLine("        </div>");
+        }
+
+        // Check Constraints Section
+        if (table.CheckConstraints.Any())
+        {
+            html.AppendLine("        <div class=\"card\" id=\"constraints\">");
+            html.AppendLine("            <h2>Check Constraints</h2>");
+            html.AppendLine("            <table>");
+            html.AppendLine("                <thead>");
+            html.AppendLine("                    <tr>");
+            html.AppendLine("                        <th>Constraint Name</th>");
+            html.AppendLine("                        <th>Definition</th>");
+            html.AppendLine("                        <th>Status</th>");
+            html.AppendLine("                    </tr>");
+            html.AppendLine("                </thead>");
+            html.AppendLine("                <tbody>");
+
+            foreach (var constraint in table.CheckConstraints)
+            {
+                html.AppendLine("                    <tr>");
+                html.AppendLine($"                        <td>{Encode(constraint.Name)}</td>");
+                html.AppendLine($"                        <td><code>{Encode(constraint.Definition)}</code></td>");
+                html.AppendLine("                        <td>");
+                if (constraint.IsDisabled)
+                    html.AppendLine("                            <span class=\"badge badge-danger\">Disabled</span>");
+                else
+                    html.AppendLine("                            <span class=\"badge badge-success\">Enabled</span>");
+                html.AppendLine("                        </td>");
+                html.AppendLine("                    </tr>");
+            }
+
+            html.AppendLine("                </tbody>");
+            html.AppendLine("            </table>");
+            html.AppendLine("        </div>");
+        }
+
+        // Dependencies Section
+        if (table.Dependencies.Any())
+        {
+            html.AppendLine("        <div class=\"card\" id=\"dependencies\">");
+            html.AppendLine("            <h2>Dependencies</h2>");
+            
+            var usedDependencies = table.Dependencies.Where(d => d.DependencyType == "USES").ToList();
+            var usedByDependencies = table.Dependencies.Where(d => d.DependencyType == "USED_BY").ToList();
+            
+            if (usedDependencies.Any())
+            {
+                html.AppendLine("            <h3>Objects Used By This " + table.Type + "</h3>");
+                html.AppendLine("            <table>");
+                html.AppendLine("                <thead>");
+                html.AppendLine("                    <tr>");
+                html.AppendLine("                        <th>Object</th>");
+                html.AppendLine("                        <th>Type</th>");
+                html.AppendLine("                    </tr>");
+                html.AppendLine("                </thead>");
+                html.AppendLine("                <tbody>");
+
+                foreach (var dep in usedDependencies)
+                {
+                    html.AppendLine("                    <tr>");
+                    html.AppendLine($"                        <td>{Encode(dep.ReferencedSchema)}.{Encode(dep.ReferencedObject)}</td>");
+                    html.AppendLine($"                        <td><span class=\"badge badge-info\">{Encode(dep.ReferencedType)}</span></td>");
+                    html.AppendLine("                    </tr>");
+                }
+
+                html.AppendLine("                </tbody>");
+                html.AppendLine("            </table>");
+            }
+            
+            if (usedByDependencies.Any())
+            {
+                html.AppendLine("            <h3>Objects That Use This " + table.Type + "</h3>");
+                html.AppendLine("            <table>");
+                html.AppendLine("                <thead>");
+                html.AppendLine("                    <tr>");
+                html.AppendLine("                        <th>Object</th>");
+                html.AppendLine("                        <th>Type</th>");
+                html.AppendLine("                    </tr>");
+                html.AppendLine("                </thead>");
+                html.AppendLine("                <tbody>");
+
+                foreach (var dep in usedByDependencies)
+                {
+                    html.AppendLine("                    <tr>");
+                    html.AppendLine($"                        <td>{Encode(dep.ReferencedSchema)}.{Encode(dep.ReferencedObject)}</td>");
+                    html.AppendLine($"                        <td><span class=\"badge badge-info\">{Encode(dep.ReferencedType)}</span></td>");
+                    html.AppendLine("                    </tr>");
+                }
+
+                html.AppendLine("                </tbody>");
+                html.AppendLine("            </table>");
+            }
+            
             html.AppendLine("        </div>");
         }
 
