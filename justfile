@@ -4,7 +4,8 @@
 default:
     @just --list
 
-# Initialize and start Docker SQL Server
+# Docker Management
+[group('docker')]
 init:
     @echo "Starting SQL Server container..."
     cd .docker && docker compose up -d
@@ -23,50 +24,61 @@ init:
     @echo "  just run       - Generate documentation"
     @echo "  just open-docs - View at http://localhost:8080"
 
-# Start Docker containers (without initialization)
+[group('docker')]
 up:
     cd .docker && docker compose up -d
     @echo "SQL Server started on port 1433"
     @echo "Web server started on http://localhost:8080"
 
-# Stop Docker containers
+[group('docker')]
 down:
     cd .docker && docker compose down
     @echo "SQL Server stopped"
 
-# Stop and remove containers and volumes (clean slate)
+[group('docker')]
 clean:
     cd .docker && docker compose down -v
     @echo "SQL Server containers and volumes removed"
 
-# View logs from SQL Server container
+[group('docker')]
 logs:
     cd .docker && docker compose logs -f sqlserver
 
-# View web server logs
+[group('docker')]
 web-logs:
     cd .docker && docker compose logs -f webserver
 
-# View all logs
+[group('docker')]
 logs-all:
     cd .docker && docker compose logs -f
 
-# Run datadic against the sample database
+[group('docker')]
+status:
+    cd .docker && docker compose ps
+
+# Build and Development
+[group('build')]
+build:
+    cd src && dotnet build
+
+[group('build')]
+restore:
+    cd src && dotnet restore
+
+[group('build')]
 run:
-    dotnet run -- -c "Server=localhost,1433;Database=SampleDB;User Id=sa;Password=DataDic123!;TrustServerCertificate=True;" -o ./output
+    cd src && dotnet run -- -c "Server=localhost,1433;Database=SampleDB;User Id=sa;Password=DataDic123!;TrustServerCertificate=True;" -o ../output
     @echo ""
     @echo "✅ Documentation generated!"
     @echo "View at: http://localhost:8080"
 
-# Build the datadic project
-build:
-    dotnet build
+# Database Management
+[group('database')]
+connect:
+    docker exec -it datadic-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P DataDic123! -C
 
-# Restore NuGet packages
-restore:
-    dotnet restore
-
-# Open the generated documentation in browser (Linux)
+# Utilities
+[group('utils')]
 open-docs:
     @if [ -f ./output/index.html ]; then \
         xdg-open http://localhost:8080 2>/dev/null || echo "Open http://localhost:8080 in your browser"; \
@@ -74,20 +86,7 @@ open-docs:
         echo "No documentation found. Run 'just run' first."; \
     fi
 
-# Connect to SQL Server with sqlcmd
-connect:
-    docker exec -it datadic-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P DataDic123! -C
-
-# Run a quick test: build, init, and generate docs
-test: build init
-    @echo ""
-    @echo "Running datadic against SampleDB..."
-    @just run
-    @echo ""
-    @echo "✅ Test complete! Documentation generated in ./output/"
-    @echo "Open ./output/index.html to view"
-
-# Show database connection information
+[group('utils')]
 info:
     @echo "DataDic Environment Information:"
     @echo "================================"
@@ -108,10 +107,16 @@ info:
     @echo "  URL: http://localhost:8080"
     @echo "  Documentation will be available after running 'just run'"
 
-# Reset database (clean + init)
+# Workflows
+[group('workflows')]
+test: build init
+    @echo ""
+    @echo "Running datadic against SampleDB..."
+    @just run
+    @echo ""
+    @echo "✅ Test complete! Documentation generated in ./output/"
+    @echo "Open ./output/index.html to view"
+
+[group('workflows')]
 reset: clean init
     @echo "Database reset complete"
-
-# Check Docker container status
-status:
-    cd .docker && docker compose ps
