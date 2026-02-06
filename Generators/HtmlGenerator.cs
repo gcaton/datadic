@@ -25,6 +25,7 @@ public class HtmlGenerator
 
         await GenerateCssAsync();
         await GenerateIndexAsync(metadata);
+        await GenerateDiagramAsync(metadata);
         await GenerateTablesAsync(metadata);
         await GenerateUsersAsync(metadata);
         await GenerateJobsAsync(metadata);
@@ -253,6 +254,7 @@ pre {
         html.AppendLine("    <div class=\"container\">");
         html.AppendLine("        <nav>");
         html.AppendLine("            <a href=\"index.html\">Home</a>");
+        html.AppendLine("            <a href=\"diagram.html\">ER Diagram</a>");
         html.AppendLine("            <a href=\"#tables\">Tables</a>");
         html.AppendLine("            <a href=\"#procedures\">Procedures</a>");
         html.AppendLine("            <a href=\"#functions\">Functions</a>");
@@ -442,6 +444,143 @@ pre {
         html.AppendLine("</html>");
 
         await File.WriteAllTextAsync(Path.Combine(_outputPath, "index.html"), html.ToString());
+    }
+
+    private async Task GenerateDiagramAsync(DatabaseMetadata metadata)
+    {
+        var diagramGenerator = new DiagramGenerator();
+        var svgContent = diagramGenerator.GenerateSvgDiagram(metadata);
+
+        var html = new StringBuilder();
+        html.AppendLine("<!DOCTYPE html>");
+        html.AppendLine("<html lang=\"en\">");
+        html.AppendLine("<head>");
+        html.AppendLine("    <meta charset=\"UTF-8\">");
+        html.AppendLine("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
+        html.AppendLine("    <title>ER Diagram - Data Dictionary</title>");
+        html.AppendLine("    <link rel=\"stylesheet\" href=\"css/style.css\">");
+        html.AppendLine("    <style>");
+        html.AppendLine("        .diagram-container {");
+        html.AppendLine("            background: white;");
+        html.AppendLine("            border-radius: 8px;");
+        html.AppendLine("            padding: 20px;");
+        html.AppendLine("            margin: 20px 0;");
+        html.AppendLine("            box-shadow: 0 2px 4px rgba(0,0,0,0.1);");
+        html.AppendLine("            overflow-x: auto;");
+        html.AppendLine("        }");
+        html.AppendLine("        .diagram-controls {");
+        html.AppendLine("            margin-bottom: 15px;");
+        html.AppendLine("            display: flex;");
+        html.AppendLine("            gap: 10px;");
+        html.AppendLine("            align-items: center;");
+        html.AppendLine("        }");
+        html.AppendLine("        .diagram-controls button {");
+        html.AppendLine("            padding: 8px 16px;");
+        html.AppendLine("            background: #3498db;");
+        html.AppendLine("            color: white;");
+        html.AppendLine("            border: none;");
+        html.AppendLine("            border-radius: 4px;");
+        html.AppendLine("            cursor: pointer;");
+        html.AppendLine("            font-size: 14px;");
+        html.AppendLine("        }");
+        html.AppendLine("        .diagram-controls button:hover {");
+        html.AppendLine("            background: #2980b9;");
+        html.AppendLine("        }");
+        html.AppendLine("        .zoom-info {");
+        html.AppendLine("            color: #7f8c8d;");
+        html.AppendLine("            font-size: 14px;");
+        html.AppendLine("        }");
+        html.AppendLine("        #erDiagram {");
+        html.AppendLine("            width: 100%;");
+        html.AppendLine("            min-height: 600px;");
+        html.AppendLine("            transition: transform 0.2s;");
+        html.AppendLine("        }");
+        html.AppendLine("    </style>");
+        html.AppendLine("</head>");
+        html.AppendLine("<body>");
+        
+        html.AppendLine("    <header>");
+        html.AppendLine("        <div class=\"container\">");
+        html.AppendLine("            <h1>Entity-Relationship Diagram</h1>");
+        html.AppendLine($"            <p>{Encode(metadata.ServerName)} / {Encode(metadata.DatabaseName)}</p>");
+        html.AppendLine("        </div>");
+        html.AppendLine("    </header>");
+
+        html.AppendLine("    <div class=\"container\">");
+        html.AppendLine("        <nav>");
+        html.AppendLine("            <a href=\"index.html\">← Back to Home</a>");
+        html.AppendLine("        </nav>");
+
+        html.AppendLine("        <div class=\"card\">");
+        html.AppendLine("            <h2>Database Schema Diagram</h2>");
+        html.AppendLine("            <p>Interactive entity-relationship diagram showing tables and their relationships. Click on any table to view details.</p>");
+        html.AppendLine("            ");
+        html.AppendLine("            <div class=\"diagram-controls\">");
+        html.AppendLine("                <button onclick=\"zoomIn()\">🔍 Zoom In</button>");
+        html.AppendLine("                <button onclick=\"zoomOut()\">🔍 Zoom Out</button>");
+        html.AppendLine("                <button onclick=\"resetZoom()\">↺ Reset</button>");
+        html.AppendLine("                <button onclick=\"downloadSVG()\">💾 Download SVG</button>");
+        html.AppendLine("                <span class=\"zoom-info\" id=\"zoomLevel\">Zoom: 100%</span>");
+        html.AppendLine("            </div>");
+        html.AppendLine("            ");
+        html.AppendLine("            <div class=\"diagram-container\">");
+        html.AppendLine("                <div id=\"erDiagram\">");
+        html.AppendLine(svgContent);
+        html.AppendLine("                </div>");
+        html.AppendLine("            </div>");
+        html.AppendLine("            ");
+        html.AppendLine("            <div style=\"margin-top: 20px; padding: 15px; background: #ecf0f1; border-radius: 4px;\">");
+        html.AppendLine("                <h3 style=\"margin-bottom: 10px;\">Legend</h3>");
+        html.AppendLine("                <p><strong>🔑</strong> Primary Key | <strong>🔗</strong> Foreign Key</p>");
+        html.AppendLine("                <p><strong>Arrows:</strong> Relationships point from foreign key to referenced primary key</p>");
+        html.AppendLine("            </div>");
+        html.AppendLine("        </div>");
+        html.AppendLine("    </div>");
+
+        html.AppendLine("    <script>");
+        html.AppendLine("        let currentZoom = 1;");
+        html.AppendLine("        const diagram = document.getElementById('erDiagram');");
+        html.AppendLine("        const zoomLevelEl = document.getElementById('zoomLevel');");
+        html.AppendLine("        ");
+        html.AppendLine("        function zoomIn() {");
+        html.AppendLine("            currentZoom = Math.min(currentZoom + 0.1, 3);");
+        html.AppendLine("            updateZoom();");
+        html.AppendLine("        }");
+        html.AppendLine("        ");
+        html.AppendLine("        function zoomOut() {");
+        html.AppendLine("            currentZoom = Math.max(currentZoom - 0.1, 0.3);");
+        html.AppendLine("            updateZoom();");
+        html.AppendLine("        }");
+        html.AppendLine("        ");
+        html.AppendLine("        function resetZoom() {");
+        html.AppendLine("            currentZoom = 1;");
+        html.AppendLine("            updateZoom();");
+        html.AppendLine("        }");
+        html.AppendLine("        ");
+        html.AppendLine("        function updateZoom() {");
+        html.AppendLine("            diagram.style.transform = `scale(${currentZoom})`;");
+        html.AppendLine("            diagram.style.transformOrigin = 'top left';");
+        html.AppendLine("            zoomLevelEl.textContent = `Zoom: ${Math.round(currentZoom * 100)}%`;");
+        html.AppendLine("        }");
+        html.AppendLine("        ");
+        html.AppendLine("        function downloadSVG() {");
+        html.AppendLine("            const svg = diagram.querySelector('svg');");
+        html.AppendLine("            const serializer = new XMLSerializer();");
+        html.AppendLine("            const svgString = serializer.serializeToString(svg);");
+        html.AppendLine("            const blob = new Blob([svgString], { type: 'image/svg+xml' });");
+        html.AppendLine("            const url = URL.createObjectURL(blob);");
+        html.AppendLine("            const a = document.createElement('a');");
+        html.AppendLine($"            a.href = url;");
+        html.AppendLine($"            a.download = '{SanitizeFileName(metadata.DatabaseName)}_er_diagram.svg';");
+        html.AppendLine("            a.click();");
+        html.AppendLine("            URL.revokeObjectURL(url);");
+        html.AppendLine("        }");
+        html.AppendLine("    </script>");
+
+        html.AppendLine("</body>");
+        html.AppendLine("</html>");
+
+        await File.WriteAllTextAsync(Path.Combine(_outputPath, "diagram.html"), html.ToString());
     }
 
     private async Task GenerateTablesAsync(DatabaseMetadata metadata)
